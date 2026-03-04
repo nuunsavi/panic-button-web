@@ -1,0 +1,57 @@
+name: Deploy React App to AWS
+
+on:
+  push:
+    branches:
+      - main  # Cambia a 'master' si usas el nombre antiguo
+
+permissions:
+  id-token: write # Esto es OBLIGATORIO para OIDC
+  contents: read  # Requerido para checkout
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Debug OIDC Token
+        run: |
+          echo "ID Token Request URL: $ACTIONS_ID_TOKEN_REQUEST_URL"
+          echo "ID Token Request Token: $ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+      - name: Check Environment
+        run: |
+          echo "ID Token Request URL is: $ACTIONS_ID_TOKEN_REQUEST_URL"
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "ERROR: OIDC Token URL is empty. Check your permissions block!"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME}}
+          aws-region: us-east-1
+          role-session-name: GitHubActionsWorkflow
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build app
+        run: npm run build
+
+      - name: Deploy to S3
+        run: aws s3 sync dist/ s3://${{ secrets.AWS_S3_BUCKET_NAME }} --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
