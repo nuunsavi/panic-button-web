@@ -14,16 +14,21 @@ export function useAlerts({ autoPoll = false, pollIntervalMs = 5000 } = {}) {
     setError(null);
     try {
       if (USE_MOCK) {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 300));
         setAlerts(SAMPLE_ALERTS);
-      } else {
-        const res = await fetch(`${API_URL}/alerts?status=ACTIVE`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setAlerts(data || []);
+        return;
       }
+
+      const res = await fetch(`${API_URL}/alerts?status=ACTIVE`, { method: "GET" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const payload = await res.json();
+      const data = Array.isArray(payload) ? payload : (payload?.data || []);
+      data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      setAlerts(data);
     } catch (err) {
-      setError(err.message || "Error fetching alerts");
+      setError(err?.message || "Error fetching alerts");
       setAlerts([]);
     } finally {
       setLoading(false);
@@ -33,9 +38,7 @@ export function useAlerts({ autoPoll = false, pollIntervalMs = 5000 } = {}) {
   useEffect(() => {
     fetchAlerts();
     let timer;
-    if (autoPoll) {
-      timer = setInterval(fetchAlerts, pollIntervalMs);
-    }
+    if (autoPoll) timer = setInterval(fetchAlerts, pollIntervalMs);
     return () => clearInterval(timer);
   }, [fetchAlerts, autoPoll, pollIntervalMs]);
 
